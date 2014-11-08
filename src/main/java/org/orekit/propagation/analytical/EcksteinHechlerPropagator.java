@@ -16,7 +16,11 @@
  */
 package org.orekit.propagation.analytical;
 
+import java.io.Serializable;
+import java.util.Collection;
+
 import org.apache.commons.math3.analysis.differentiation.DerivativeStructure;
+import org.apache.commons.math3.analysis.interpolation.HermiteInterpolator;
 import org.apache.commons.math3.geometry.euclidean.threed.FieldVector3D;
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
 import org.apache.commons.math3.util.FastMath;
@@ -27,6 +31,7 @@ import org.orekit.errors.OrekitMessages;
 import org.orekit.errors.PropagationException;
 import org.orekit.forces.gravity.potential.UnnormalizedSphericalHarmonicsProvider;
 import org.orekit.forces.gravity.potential.UnnormalizedSphericalHarmonicsProvider.UnnormalizedSphericalHarmonics;
+import org.orekit.frames.Frame;
 import org.orekit.orbits.CircularOrbit;
 import org.orekit.orbits.Orbit;
 import org.orekit.orbits.OrbitType;
@@ -368,7 +373,7 @@ public class EcksteinHechlerPropagator extends AbstractAnalyticalPropagator {
     }
 
     /** {@inheritDoc} */
-    public CircularOrbit propagateOrbit(final AbsoluteDate date)
+    public EHOrbit propagateOrbit(final AbsoluteDate date)
         throws PropagationException {
         return model.propagateOrbit(date);
     }
@@ -573,7 +578,7 @@ public class EcksteinHechlerPropagator extends AbstractAnalyticalPropagator {
          * @return extrapolated parameters
          * @exception PropagationException if some parameters are out of bounds
          */
-        public CircularOrbit propagateOrbit(final AbsoluteDate date)
+        public EHOrbit propagateOrbit(final AbsoluteDate date)
             throws PropagationException {
 
             // keplerian evolution
@@ -687,23 +692,182 @@ public class EcksteinHechlerPropagator extends AbstractAnalyticalPropagator {
                                              add(exmSl3.subtract(eymCl3).multiply(l3)).
                                              add(ql.multiply(ll));
 
-            // osculating parameters
-            final DerivativeStructure a      = rda.add(1.0).multiply(mean.getA());
-            final DerivativeStructure ex     = rdex.add(exm);
-            final DerivativeStructure ey     = rdey.add(eym);
-            final DerivativeStructure i      = rdxi.add(xim);
-            final DerivativeStructure raan   = rdom.add(omm);
-            final DerivativeStructure alphaM = rdxl.add(xlm);
+            // build the complete orbit
+            return new EHOrbit(rda.add(1.0).multiply(mean.getA()), rdex.add(exm), rdey.add(eym),
+                               rdxi.add(xim), rdom.add(omm), rdxl.add(xlm),
+                               mean.getFrame(), date, mu);
 
-            // precompute Cartesian parameters, taking derivatives into account
-            // to make sure velocity and acceleration are consistent
-            final TimeStampedPVCoordinates pv = toCartesian(date, a, ex, ey, i, raan, alphaM);
+        }
 
-            // build the complete orbit, with both circular and Cartesian parameters
-            return new CircularOrbit(a.getValue(), ex.getValue(), ey.getValue(),
-                                     i.getValue(), raan.getValue(),
-                                     alphaM.getValue(), PositionAngle.MEAN,
-                                     pv, mean.getFrame(), mu);
+    }
+
+    /** Specialization of the {@link CircularOrbit circular orbit} class,
+     * taking derivatives into account for interpolation and shift.
+     */
+    public static class EHOrbit extends CircularOrbit {
+
+        /** Serializable UID. */
+        private static final long serialVersionUID = 20141106l;
+
+        /** Semi-major axis (m). */
+        private DerivativeStructure a;
+
+        /** First component of the circular eccentricity vector. */
+        private DerivativeStructure ex;
+
+        /** Second component of the circular eccentricity vector. */
+        private DerivativeStructure ey;
+
+        /** Inclination (rad). */
+        private DerivativeStructure i;
+
+        /** Right Ascension of Ascending Node (rad). */
+        private DerivativeStructure raan;
+
+        /** Mean latitude argument (rad). */
+        private DerivativeStructure alphaM;
+
+        /** Creates a new instance.
+         * @param a  semi-major axis (m)
+         * @param ex e cos(&omega;), first component of circular eccentricity vector
+         * @param ey e sin(&omega;), second component of circular eccentricity vector
+         * @param i inclination (rad)
+         * @param raan right ascension of ascending node (&Omega;, rad)
+         * @param alphaM  M + &omega;, mean latitude argument (rad)
+         * @param frame the frame in which are defined the parameters
+         * (<em>must</em> be a {@link Frame#isPseudoInertial pseudo-inertial frame})
+         * @param date date of the orbital parameters
+         * @param mu central attraction coefficient (m<sup>3</sup>/s<sup>2</sup>)
+         * @exception IllegalArgumentException if eccentricity is equal to 1 or larger or
+         * if frame is not a {@link Frame#isPseudoInertial pseudo-inertial frame}
+         */
+        public EHOrbit(final DerivativeStructure a, final DerivativeStructure ex, final DerivativeStructure ey,
+                       final DerivativeStructure i, final DerivativeStructure raan,
+                       final DerivativeStructure alphaM,
+                       final Frame frame, final AbsoluteDate date, final double mu)
+            throws IllegalArgumentException {
+            super(a.getValue(), ex.getValue(), ey.getValue(),
+                  i.getValue(), raan.getValue(),
+                  alphaM.getValue(), PositionAngle.MEAN,
+                  toCartesian(date, a, ex, ey, i, raan, alphaM), frame, mu);
+            this.a      = a;
+            this.ex     = ex;
+            this.ey     = ey;
+            this.i      = i;
+            this.raan   = raan;
+            this.alphaM = alphaM;
+        }
+
+        /** {@inheritDoc} */
+        public EHOrbit shiftedBy(final double dt) {
+            return new EHOrbit(shift(a, dt), shift(ex,   dt), shift(ey,     dt),
+                               shift(i, dt), shift(raan, dt), shift(alphaM, dt),
+                               getFrame(), getDate().shiftedBy(dt), getMu());
+        }
+
+        /** Shift a {@link DerivativeStructure}.
+         * @param s structure to shift
+         * @param dt time shift
+         * @return shifted {@link DerivativeStructure}
+         */
+        private DerivativeStructure shift(final DerivativeStructure s, final double dt) {
+            return new DerivativeStructure(1, 2,
+                                           s.getValue() + dt * (s.getPartialDerivative(1) + 0.5 * dt * s.getPartialDerivative(2)),
+                                           s.getPartialDerivative(1) + dt * s.getPartialDerivative(2),
+                                           s.getPartialDerivative(2));
+        }
+
+        /** {@inheritDoc}
+         * <p>
+         * The interpolated instance is created by polynomial Hermite interpolation
+         * on circular elements, with derivatives.
+         * </p>
+         * <p>
+         * As this methods uses the derivatives, the sample <em>must</em> contain only
+         * {@link EHOrbit EHOrbit} instances, otherwise an exception will be thrown.
+         * </p>
+         * <p>
+         * As this implementation of interpolation is polynomial, it should be used only
+         * with small samples (about 10-20 points) in order to avoid <a
+         * href="http://en.wikipedia.org/wiki/Runge%27s_phenomenon">Runge's phenomenon</a>
+         * and numerical problems (including NaN appearing).
+         * </p>
+         * <p>
+         * If orbit interpolation on large samples is needed, using the {@link
+         * org.orekit.propagation.analytical.Ephemeris} class is a better way than using this
+         * low-level interpolation. The Ephemeris class automatically handles selection of
+         * a neighboring sub-sample with a predefined number of point from a large global sample
+         * in a thread-safe way.
+         * </p>
+         * @exception OrekitException if the sample contains orbits that are not {@link EHOrbit
+         * EHOrbit} instances
+         */
+        public EHOrbit interpolate(final AbsoluteDate date, final Collection<Orbit> sample)
+            throws OrekitException {
+
+            // set up an interpolator
+            final HermiteInterpolator interpolator = new HermiteInterpolator();
+
+            // add sample points
+            AbsoluteDate previousDate = null;
+            double previousRAAN   = Double.NaN;
+            double previousAlphaM = Double.NaN;
+            for (final Orbit orbit : sample) {
+                final EHOrbit perturbed;
+                try {
+                    perturbed = (EHOrbit) orbit;
+                } catch (ClassCastException cce) {
+                    throw new OrekitException(OrekitMessages.ORBIT_TYPE_MISMATCH,
+                                              orbit.getClass().getName(), EHOrbit.class.getName());
+                }
+                final double continuousRAAN;
+                final double continuousAlphaM;
+                if (previousDate == null) {
+                    continuousRAAN   = perturbed.getRightAscensionOfAscendingNode();
+                    continuousAlphaM = perturbed.getAlphaM();
+                } else {
+                    final double dt       = perturbed.getDate().durationFrom(previousDate);
+                    final double keplerAM = previousAlphaM + perturbed.getKeplerianMeanMotion() * dt;
+                    continuousRAAN   = MathUtils.normalizeAngle(perturbed.getRightAscensionOfAscendingNode(), previousRAAN);
+                    continuousAlphaM = MathUtils.normalizeAngle(perturbed.getAlphaM(), keplerAM);
+                }
+                previousDate   = perturbed.getDate();
+                previousRAAN   = continuousRAAN;
+                previousAlphaM = continuousAlphaM;
+                interpolator.addSamplePoint(perturbed.getDate().durationFrom(date),
+                                            new double[] {
+                                                perturbed.a.getValue(),
+                                                perturbed.ex.getValue(),
+                                                perturbed.ey.getValue(),
+                                                perturbed.i.getValue(),
+                                                continuousRAAN,
+                                                continuousAlphaM
+                                            },
+                                            new double[] {
+                                                perturbed.a.getPartialDerivative(1),
+                                                perturbed.ex.getPartialDerivative(1),
+                                                perturbed.ey.getPartialDerivative(1),
+                                                perturbed.i.getPartialDerivative(1),
+                                                perturbed.raan.getPartialDerivative(1),
+                                                perturbed.alphaM.getPartialDerivative(1)
+                                            },
+                                            new double[] {
+                                                perturbed.a.getPartialDerivative(2),
+                                                perturbed.ex.getPartialDerivative(2),
+                                                perturbed.ey.getPartialDerivative(2),
+                                                perturbed.i.getPartialDerivative(2),
+                                                perturbed.raan.getPartialDerivative(2),
+                                                perturbed.alphaM.getPartialDerivative(2)
+                                            });
+            }
+
+            // interpolate
+            final DerivativeStructure[] interpolated = interpolator.value(new DerivativeStructure(1, 2, 0, 0.0));
+
+            // build a new interpolated instance
+            return new EHOrbit(interpolated[0], interpolated[1], interpolated[2],
+                               interpolated[3], interpolated[4], interpolated[5],
+                               getFrame(), date, getMu());
 
         }
 
@@ -717,10 +881,10 @@ public class EcksteinHechlerPropagator extends AbstractAnalyticalPropagator {
          * @param alphaM  mean latitude argument (rad)
          * @return Cartesian coordinates consistent with values and derivatives
          */
-        public TimeStampedPVCoordinates toCartesian(final AbsoluteDate date,      final DerivativeStructure a,
-                                                    final DerivativeStructure ex, final DerivativeStructure ey,
-                                                    final DerivativeStructure i,  final DerivativeStructure raan,
-                                                    final DerivativeStructure alphaM) {
+        private static TimeStampedPVCoordinates toCartesian(final AbsoluteDate date,      final DerivativeStructure a,
+                                                            final DerivativeStructure ex, final DerivativeStructure ey,
+                                                            final DerivativeStructure i,  final DerivativeStructure raan,
+                                                            final DerivativeStructure alphaM) {
 
             // evaluate coordinates in the orbit canonical reference frame
             final DerivativeStructure cosOmega = raan.cos();
@@ -769,9 +933,9 @@ public class EcksteinHechlerPropagator extends AbstractAnalyticalPropagator {
          * @param ey e sin(Ω), second component of circular eccentricity vector
          * @return the eccentric latitude argument.
          */
-        private DerivativeStructure meanToEccentric(final DerivativeStructure alphaM,
-                                                    final DerivativeStructure ex,
-                                                    final DerivativeStructure ey) {
+        private static DerivativeStructure meanToEccentric(final DerivativeStructure alphaM,
+                                                           final DerivativeStructure ex,
+                                                           final DerivativeStructure ey) {
             // Generalization of Kepler equation to circular parameters
             // with alphaE = PA + E and
             //      alphaM = PA + M = alphaE - ex.sin(alphaE) + ey.cos(alphaE)
@@ -780,7 +944,7 @@ public class EcksteinHechlerPropagator extends AbstractAnalyticalPropagator {
             DerivativeStructure alphaEMalphaM = alphaM.getField().getZero();
             DerivativeStructure cosAlphaE     = alphaE.cos();
             DerivativeStructure sinAlphaE     = alphaE.sin();
-            int    iter          = 0;
+            int iter = 0;
             do {
                 final DerivativeStructure f2 = ex.multiply(sinAlphaE).subtract(ey.multiply(cosAlphaE));
                 final DerivativeStructure f1 = alphaM.getField().getOne().subtract(ex.multiply(cosAlphaE)).subtract(ey.multiply(sinAlphaE));
@@ -797,6 +961,65 @@ public class EcksteinHechlerPropagator extends AbstractAnalyticalPropagator {
             } while ((++iter < 50) && (FastMath.abs(shift.getValue()) > 1.0e-12));
 
             return alphaE;
+
+        }
+
+        /** Replace the instance with a data transfer object for serialization.
+         * @return data transfer object that will be serialized
+         */
+        private Object writeReplace() {
+            return new DTO(this);
+        }
+
+        /** Internal class used only for serialization. */
+        private static class DTO implements Serializable {
+
+            /** Serializable UID. */
+            private static final long serialVersionUID = 20141111L;
+
+            /** Double values. */
+            private double[] d;
+
+            /** Frame in which are defined the orbital parameters. */
+            private final Frame frame;
+
+            /** Simple constructor.
+             * @param orbit instance to serialize
+             */
+            private DTO(final EHOrbit orbit) {
+
+                final AbsoluteDate date = orbit.getDate();
+
+                // decompose date
+                final double epoch  = FastMath.floor(date.durationFrom(AbsoluteDate.J2000_EPOCH));
+                final double offset = date.durationFrom(AbsoluteDate.J2000_EPOCH.shiftedBy(epoch));
+
+                d = new double[] {
+                    epoch, offset, orbit.getMu(),
+                    orbit.a.getValue(),      orbit.a.getPartialDerivative(1),      orbit.a.getPartialDerivative(2),
+                    orbit.ex.getValue(),     orbit.ex.getPartialDerivative(1),     orbit.ex.getPartialDerivative(2),
+                    orbit.ey.getValue(),     orbit.ey.getPartialDerivative(1),     orbit.ey.getPartialDerivative(2),
+                    orbit.i.getValue(),      orbit.i.getPartialDerivative(1),      orbit.i.getPartialDerivative(2),
+                    orbit.raan.getValue(),   orbit.raan.getPartialDerivative(1),   orbit.raan.getPartialDerivative(2),
+                    orbit.alphaM.getValue(), orbit.alphaM.getPartialDerivative(1), orbit.alphaM.getPartialDerivative(2)
+                };
+
+                frame = orbit.getFrame();
+
+            }
+
+            /** Replace the deserialized data transfer object with a {@link EHOrbit}.
+             * @return replacement {@link EHOrbit}
+             */
+            private Object readResolve() {
+                return new EHOrbit(new DerivativeStructure(1, 2,  d[3],  d[4],  d[5]),
+                                   new DerivativeStructure(1, 2,  d[6],  d[7],  d[8]),
+                                   new DerivativeStructure(1, 2,  d[9], d[10], d[11]),
+                                   new DerivativeStructure(1, 2, d[12], d[13], d[14]),
+                                   new DerivativeStructure(1, 2, d[15], d[16], d[17]),
+                                   new DerivativeStructure(1, 2, d[18], d[19], d[20]),
+                                   frame, AbsoluteDate.J2000_EPOCH.shiftedBy(d[0]).shiftedBy(d[1]), d[2]);
+            }
 
         }
 

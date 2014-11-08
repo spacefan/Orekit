@@ -199,6 +199,9 @@ ATTITUDE_POINTING_LAW_DOES_NOT_POINT_TO_GROUND = Ο προσανατολισμό
 # orbit date ({0}) does not match attitude date ({1})
 ORBIT_AND_ATTITUDE_DATES_MISMATCH = η ημερομηνία τροχιάς ({0}) δεν συμβαδίζει με την ημερομηνία του προσανατολισμού θέσης ({1})
 
+# orbit type {0} does not match expected type {1}
+ORBIT_TYPE_MISMATCH = <MISSING TRANSLATION>
+
 # frame ({0}) does not match frame ({1})
 FRAMES_MISMATCH =  Το πλαίσιο ({0}) δεν αντιστοιχεί στο πλαίσιο ({1})
 

@@ -616,8 +616,10 @@ public class CircularOrbit
      * a neighboring sub-sample with a predefined number of point from a large global sample
      * in a thread-safe way.
      * </p>
+     * @exception OrekitException if interpolation cannot be performed
      */
-    public CircularOrbit interpolate(final AbsoluteDate date, final Collection<Orbit> sample) {
+    public CircularOrbit interpolate(final AbsoluteDate date, final Collection<Orbit> sample)
+        throws OrekitException {
 
         // set up an interpolator
         final HermiteInterpolator interpolator = new HermiteInterpolator();

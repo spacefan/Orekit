@@ -199,6 +199,9 @@ ATTITUDE_POINTING_LAW_DOES_NOT_POINT_TO_GROUND = la legge di puntamento dell''as
 # orbit date ({0}) does not match attitude date ({1})
 ORBIT_AND_ATTITUDE_DATES_MISMATCH = la data d''orbita ({0}) non corrisponde alla data dell''assetto ({1})
 
+# orbit type {0} does not match expected type {1}
+ORBIT_TYPE_MISMATCH = <MISSING TRANSLATION>
+
 # frame ({0}) does not match frame ({1})
 FRAMES_MISMATCH = il riferimento ({0}) non corrisponde al riferimento ({1})
 

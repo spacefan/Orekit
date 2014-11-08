@@ -68,27 +68,23 @@ public class SpacecraftStateTest {
         // polynomial models for interpolation error in position, velocity, acceleration and attitude
         // these models grow as follows
         //   interpolation time (s)    position error (m)   velocity error (m/s)   acceleration error (m/s²)  attitude error (°)
-        //           60                       20                    1                     0.00004               0.000005
-        //          120                      100                    2                     0.0004                0.00005
-        //          300                      600                    4                     0.001                 0.0007
-        //          600                     2000                    6                     0.004                 0.006
-        //          900                     4000                    6                     0.008                 0.02
-        // the expected maximum residuals with respect to these models are about 0.7m, 0.7mm/s and 3.0e-7°
+        //           60                        6                   0.3                    0.01                 0.00002
+        //          120                       50                   1.2                    0.02                 0.00009
+        //          300                      800                    8                     0.06                 0.0009
+        //          600                     7000                   38                     0.14                 0.0064
+        //          900                    25000                   87                     0.22                 0.021
+        // the expected maximum residuals with respect to these models are about 0.5m, 1.2mm/s, 1.7μm/s² and 3.0e-6°
         PolynomialFunction pModel = new PolynomialFunction(new double[] {
-            0.7947439359233139, -0.06668291308114155, 0.007386912019566922,
-            -1.974642579925139E-6, -1.875613528179364E-9, 9.23933832479695E-13
+            0.5080150078520731, -0.026267296920190364, 3.144301347453764E-4, 2.528504769039889E-5, 1.5492675135089428E-8, -6.315377186211483E-12,
         });
         PolynomialFunction vModel = new PolynomialFunction(new double[] {
-            -5.121264747918845E-4, 0.015132635807321153, -7.864376206115991E-6,
-            -2.36945648822257E-9, -4.87282847874706E-13, 1.6754469679610568E-15
+            -0.0012491904383060692, 6.314575735620609E-5, 7.969508066261885E-5, 5.0996358015919935E-8, -1.6272684081316867E-11, -4.738523033185862E-15,
         });
         PolynomialFunction aModel = new PolynomialFunction(new double[] {
-            1.6354900692108832E-6, -2.4706877854002407E-7, 1.4052801354514918E-8,
-            -3.1260245160785984E-12, -2.7280473805786235E-15, 1.162962531465119E-18
+            1.6767797370869164E-6, 1.6077403899265983E-4, 1.4370711672346977E-7, -2.992693445233554E-11, -3.3650117147504416E-14, 8.930350640540287E-18,
         });
         PolynomialFunction rModel = new PolynomialFunction(new double[] {
-            3.0666301633348556E-7, -1.524723924836661E-8, 1.7046531571850435E-10,
-            2.4564790522495316E-11, 5.954526456756948E-15, -1.99658520124876E-18
+            -2.7689062182403017E-6, 1.7406542555507358E-7, 2.510979532481025E-9, 2.039932266627844E-11, 9.912634888010535E-15, -3.5015638902258456E-18,
         });
 
         AbsoluteDate centerDate = orbit.getDate().shiftedBy(100.0);
@@ -112,22 +108,18 @@ public class SpacecraftStateTest {
             maxResidualA = FastMath.max(maxResidualA, FastMath.abs(residualA));
             maxResidualR = FastMath.max(maxResidualR, FastMath.abs(residualR));
         }
-        Assert.assertEquals(0.7,    maxResidualP, 0.1);
-        Assert.assertEquals(0.0007, maxResidualV, 0.0001);
-        Assert.assertEquals(1.6e-6, maxResidualA, 1.0e-7);
-        Assert.assertEquals(3.0e-7, maxResidualR, 1.0e-8);
+        Assert.assertEquals(0.5,    maxResidualP, 0.1);
+        Assert.assertEquals(0.0012, maxResidualV, 0.0001);
+        Assert.assertEquals(1.7e-6, maxResidualA, 1.0e-7);
+        Assert.assertEquals(2.8e-6, maxResidualR, 1.0e-7);
     }
 
     @Test
     public void testInterpolation()
         throws ParseException, OrekitException {
-        checkInterpolationError( 2, 5162.2580, 1.51501141, 169847806.33e-9, 0.0, 450 * 450);
-        checkInterpolationError( 3,  650.5940, 0.67849324,    189886.01e-9, 0.0, 0.0);
-        checkInterpolationError( 4,  259.3868, 0.15246485,       232.25e-9, 0.0, 0.0);
-        checkInterpolationError( 5,   29.5445, 0.02278694,         0.48e-9, 0.0, 0.0);
-        checkInterpolationError( 6,    6.7633, 0.00336356,         0.00e-9, 0.0, 0.0);
-        checkInterpolationError( 9,    0.0082, 0.00000577,         0.00e-9, 0.0, 0.0);
-        checkInterpolationError(10,    0.0011, 0.00000058,         0.00e-9, 0.0, 0.0);
+        checkInterpolationError( 2,   88.55382, 0.34433951, 169847806.33e-9, 0.0, 450 * 450);
+        checkInterpolationError( 3,    0.02261, 0.00020801,    189886.01e-9, 0.0, 0.0);
+        checkInterpolationError( 4,    0.00001, 0.00000017,       232.25e-9, 0.0, 0.0);
     }
 
     private void checkInterpolationError(int n, double expectedErrorP, double expectedErrorV,
@@ -306,8 +298,8 @@ public class SpacecraftStateTest {
         ObjectOutputStream    oos = new ObjectOutputStream(bos);
         oos.writeObject(state);
 
-        Assert.assertTrue(bos.size() > 700);
-        Assert.assertTrue(bos.size() < 800);
+        Assert.assertTrue(bos.size() > 750);
+        Assert.assertTrue(bos.size() < 850);
 
         ByteArrayInputStream  bis = new ByteArrayInputStream(bos.toByteArray());
         ObjectInputStream     ois = new ObjectInputStream(bis);

@@ -114,6 +114,7 @@ public enum OrekitMessages implements Localizable {
     SATELLITE_COLLIDED_WITH_TARGET("satellite collided with target"),
     ATTITUDE_POINTING_LAW_DOES_NOT_POINT_TO_GROUND("attitude pointing law misses ground"),
     ORBIT_AND_ATTITUDE_DATES_MISMATCH("orbit date ({0}) does not match attitude date ({1})"),
+    ORBIT_TYPE_MISMATCH("orbit type {0} does not match expected type {1}"),
     FRAMES_MISMATCH("frame {0} does not match frame {1}"),
     INITIAL_STATE_NOT_SPECIFIED_FOR_ORBIT_PROPAGATION("initial state not specified for orbit propagation"),
     PROPAGATOR_NOT_IN_EPHEMERIS_GENERATION_MODE("propagator is not in ephemeris generation mode"),
